@@ -1,0 +1,56 @@
+# depslib dependency file v1.0
+1791186916 source:c:\users\vladi\documents\github\edr-test-c-open-scource\edr.c
+	<stdio.h>
+	<string.h>
+	<ctype.h>
+	"edr.h"
+
+1791186916 c:\users\vladi\documents\github\edr-test-c-open-scource\edr.h
+
+1791186916 source:c:\users\vladi\documents\github\edr-test-c-open-scource\logger.c
+	<stdio.h>
+	<time.h>
+	"logger.h"
+
+1791186916 c:\users\vladi\documents\github\edr-test-c-open-scource\logger.h
+
+1791186916 source:c:\users\vladi\documents\github\edr-test-c-open-scource\monitor.c
+	<windows.h>
+	<stdio.h>
+	<string.h>
+	"monitor.h"
+	"edr.h"
+	"logger.h"
+
+1791186916 c:\users\vladi\documents\github\edr-test-c-open-scource\monitor.h
+
+1791186916 source:c:\users\vladi\documents\github\edr-test-c-open-scource\process.c
+	<windows.h>
+	<tlhelp32.h>
+	<stdio.h>
+	<string.h>
+	"process.h"
+	"edr.h"
+	"logger.h"
+
+1791186916 c:\users\vladi\documents\github\edr-test-c-open-scource\process.h
+
+1791186916 source:c:\users\vladi\documents\github\edr-test-c-open-scource\scanner.c
+	<windows.h>
+	<stdio.h>
+	<string.h>
+	"scanner.h"
+	"edr.h"
+	"logger.h"
+
+1791186916 c:\users\vladi\documents\github\edr-test-c-open-scource\scanner.h
+
+1791186999 source:c:\users\vladi\documents\github\edr-test-c-open-scource\main.c
+	<windows.h>
+	<stdio.h>
+	"edr.h"
+	"logger.h"
+	"process.h"
+	"monitor.h"
+	"scanner.h"
+
