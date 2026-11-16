@@ -1,12 +1,11 @@
 #include <windows.h>
 #include <bcrypt.h>
-#include <wintrust.h>
-#include <softpub.h>
 #include <wchar.h>
 #include <wctype.h>
 #include <stdio.h>
 #include <string.h>
 #include "edr.h"
+#include "sign.h"
 
 volatile LONG X01Stop = 0;
 
@@ -163,8 +162,23 @@ void X01VerdictFinish(X01Verdict *v) {
                v->score > 0 ? RISK_LOW : RISK_NONE;
 }
 
+static void X01ScoreSignature(const WCHAR *name, BOOL in_windir, const X01Sign *sig,
+                              int masquerade, X01Verdict *v) {
+    if (X01InList(name, X01SystemNames, X01N(X01SystemNames)) &&
+        (!in_windir || (sig->status != X01SIG_NONE && !X01SignMicrosoft(sig)))) {
+        X01VerdictAdd(v, masquerade, "system_name_masquerade");
+    }
+    if (sig->status == X01SIG_INVALID) {
+        X01VerdictAdd(v, 60, "invalid_signature");
+    } else if (sig->status == X01SIG_UNTRUSTED && v->score > 0) {
+        X01VerdictAdd(v, 20, "untrusted_signature");
+    } else if (sig->status == X01SIG_UNSIGNED && v->score > 0) {
+        X01VerdictAdd(v, 15, "unsigned");
+    }
+}
+
 void X01ScoreProcess(const WCHAR *name, const WCHAR *image, const WCHAR *parent,
-                     const WCHAR *cmd, X01Verdict *v) {
+                     const WCHAR *cmd, const X01Sign *sig, X01Verdict *v) {
     WCHAR low[EDR_CMD];
 
     memset(v, 0, sizeof(*v));
@@ -173,20 +187,15 @@ void X01ScoreProcess(const WCHAR *name, const WCHAR *image, const WCHAR *parent,
         X01VerdictAdd(v, 70, "known_attack_tool");
     }
 
-    if (X01InList(name, X01Lolbins, X01N(X01Lolbins))) {
-        X01VerdictAdd(v, 5, "lolbin");
-        if (X01InList(parent, X01OfficeApps, X01N(X01OfficeApps))) {
-            X01VerdictAdd(v, 60, "office_spawned_shell");
-        }
+    if (X01InList(name, X01Lolbins, X01N(X01Lolbins)) &&
+        X01InList(parent, X01OfficeApps, X01N(X01OfficeApps))) {
+        X01VerdictAdd(v, 60, "office_spawned_shell");
     }
 
     if (image && image[0]) {
         X01Lower(image, low, X01N(low));
         if (X01HasAny(low, X01UserPaths, X01N(X01UserPaths))) {
             X01VerdictAdd(v, 25, "user_writable_path");
-        }
-        if (X01InList(name, X01SystemNames, X01N(X01SystemNames)) && !X01InWinDir(low)) {
-            X01VerdictAdd(v, 80, "system_name_masquerade");
         }
     }
 
@@ -198,6 +207,10 @@ void X01ScoreProcess(const WCHAR *name, const WCHAR *image, const WCHAR *parent,
         if (X01HasAny(low, X01CmdMedium, X01N(X01CmdMedium))) {
             X01VerdictAdd(v, 35, "suspicious_cmdline");
         }
+    }
+
+    if (image && image[0]) {
+        X01ScoreSignature(name, X01InWinDir(image), sig, 80, v);
     }
 
     X01VerdictFinish(v);
@@ -219,13 +232,14 @@ static BOOL X01DoubleExt(const WCHAR *base) {
     return X01InList(inner, X01DocExt, X01N(X01DocExt));
 }
 
-void X01ScoreFile(const WCHAR *path, X01Verdict *v) {
+void X01ScoreFile(const WCHAR *path, X01Sign *sig, X01Verdict *v) {
     const WCHAR *base = X01BaseName(path);
     const WCHAR *ext = X01Ext(base);
     WCHAR low[EDR_PATH];
     BOOL pe = X01InList(ext, X01PeExt, X01N(X01PeExt));
 
     memset(v, 0, sizeof(*v));
+    memset(sig, 0, sizeof(*sig));
     X01Lower(path, low, X01N(low));
 
     if (X01HasAny(X01BaseName(low), X01Keywords, X01N(X01Keywords))) {
@@ -244,9 +258,8 @@ void X01ScoreFile(const WCHAR *path, X01Verdict *v) {
         if (X01HasAny(low, X01UserPaths, X01N(X01UserPaths))) {
             X01VerdictAdd(v, 20, "pe_user_writable_path");
         }
-        if (v->score > 0 && !X01InWinDir(path) && !X01IsSigned(path)) {
-            X01VerdictAdd(v, 15, "unsigned");
-        }
+        X01SignCheck(path, sig);
+        X01ScoreSignature(base, X01InWinDir(path), sig, 60, v);
     }
 
     X01VerdictFinish(v);
@@ -288,30 +301,4 @@ BOOL X01Sha256(const WCHAR *path, char out[65]) {
 
     CloseHandle(file);
     return ok;
-}
-
-BOOL X01IsSigned(const WCHAR *path) {
-    GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-    WINTRUST_FILE_INFO info;
-    WINTRUST_DATA data;
-    LONG status;
-
-    memset(&info, 0, sizeof(info));
-    info.cbStruct = sizeof(info);
-    info.pcwszFilePath = path;
-
-    memset(&data, 0, sizeof(data));
-    data.cbStruct = sizeof(data);
-    data.dwUIChoice = WTD_UI_NONE;
-    data.fdwRevocationChecks = WTD_REVOKE_NONE;
-    data.dwUnionChoice = WTD_CHOICE_FILE;
-    data.pFile = &info;
-    data.dwStateAction = WTD_STATEACTION_VERIFY;
-    data.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
-
-    status = WinVerifyTrust((HWND)INVALID_HANDLE_VALUE, &action, &data);
-    data.dwStateAction = WTD_STATEACTION_CLOSE;
-    WinVerifyTrust((HWND)INVALID_HANDLE_VALUE, &action, &data);
-
-    return status == ERROR_SUCCESS;
 }

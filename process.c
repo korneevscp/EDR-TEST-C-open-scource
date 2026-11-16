@@ -8,6 +8,7 @@
 #include "edr.h"
 #include "logger.h"
 #include "vt.h"
+#include "sign.h"
 
 typedef struct {
     DWORD pid;
@@ -108,12 +109,14 @@ static BOOL X01Analyze(const X01Proc *p, const X01ProcList *all, const char *act
     static WCHAR cmd[EDR_CMD];
     const X01Proc *parent = X01Find(all, p->ppid);
     X01Verdict v;
+    X01Sign sig;
     X01Json j;
     char sha[65] = "";
     char name[MAX_PATH * 3];
 
     X01ProcInfo(p->pid, image, X01N(image), cmd, X01N(cmd));
-    X01ScoreProcess(p->name, image, parent ? parent->name : NULL, cmd, &v);
+    X01SignCheck(image, &sig);
+    X01ScoreProcess(p->name, image, parent ? parent->name : NULL, cmd, &sig, &v);
 
     X01JsonInit(&j);
     X01JsonNum(&j, "process.pid", p->pid);
@@ -122,19 +125,14 @@ static BOOL X01Analyze(const X01Proc *p, const X01ProcList *all, const char *act
     X01JsonWStr(&j, "process.command_line", cmd);
     X01JsonNum(&j, "process.parent.pid", p->ppid);
     X01JsonWStr(&j, "process.parent.name", parent ? parent->name : L"");
+    X01SignJson(&j, "process", &sig);
 
     if (v.score > 0 && image[0]) {
-        BOOL sign = X01InWinDir(image) || X01IsSigned(image);
         X01VtResult vt;
-        if (!sign) {
-            X01VerdictAdd(&v, 10, "unsigned");
-            X01VerdictFinish(&v);
-        }
         if (X01Sha256(image, sha)) {
             X01JsonStr(&j, "process.hash.sha256", sha);
             X01VtApply(sha, "process", &v, &j, &vt);
         }
-        X01JsonBool(&j, "process.code_signature.trusted", sign);
     }
 
     X01Emit("process", action, &v, &j);

@@ -8,6 +8,7 @@
 #include "monitor.h"
 #include "scanner.h"
 #include "vt.h"
+#include "sign.h"
 
 static BOOL WINAPI X01CtrlHandler(DWORD type) {
     if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT) {
@@ -91,6 +92,7 @@ int main(int argc, char **argv) {
     if (!X01EdrInit()) {
         fprintf(stderr, "SHA-256 provider unavailable, hashing disabled.\n");
     }
+    X01SignInit();
     if (!X01LogInit(log, siem)) {
         fprintf(stderr, "Unable to open log file: %s\n", log);
     }
@@ -137,6 +139,7 @@ int main(int argc, char **argv) {
 
     X01Emit("agent", "agent_stopped", NULL, NULL);
     X01VtClose();
+    X01SignClose();
     X01LogClose();
     X01EdrClose();
     return 0;

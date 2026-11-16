@@ -16,6 +16,21 @@ typedef enum {
     RISK_CRITICAL = 4
 } RiskLevel;
 
+typedef enum {
+    X01SIG_NONE = 0,
+    X01SIG_UNSIGNED,
+    X01SIG_EMBEDDED,
+    X01SIG_CATALOG,
+    X01SIG_UNTRUSTED,
+    X01SIG_INVALID
+} X01SignStatus;
+
+typedef struct {
+    X01SignStatus status;
+    LONG error;
+    WCHAR signer[128];
+} X01Sign;
+
 typedef struct {
     RiskLevel level;
     int score;
@@ -30,13 +45,12 @@ const char *X01RiskName(RiskLevel level);
 void X01Utf8(const WCHAR *src, char *dst, int size);
 const WCHAR *X01BaseName(const WCHAR *path);
 BOOL X01Sha256(const WCHAR *path, char out[65]);
-BOOL X01IsSigned(const WCHAR *path);
 BOOL X01IsPe(const WCHAR *path);
 BOOL X01InWinDir(const WCHAR *path);
 void X01VerdictAdd(X01Verdict *v, int points, const char *reason);
 void X01VerdictFinish(X01Verdict *v);
 void X01ScoreProcess(const WCHAR *name, const WCHAR *image, const WCHAR *parent,
-                     const WCHAR *cmd, X01Verdict *v);
-void X01ScoreFile(const WCHAR *path, X01Verdict *v);
+                     const WCHAR *cmd, const X01Sign *sig, X01Verdict *v);
+void X01ScoreFile(const WCHAR *path, X01Sign *sig, X01Verdict *v);
 
 #endif

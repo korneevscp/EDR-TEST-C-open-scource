@@ -11,7 +11,8 @@ MiniEDR est un prototype d'Endpoint Detection and Response (EDR) écrit en C pou
 | `process.c` | Inventaire des processus, surveillance des créations/arrêts en temps réel, enrichissement (chemin, ligne de commande, parent, SHA-256, signature) |
 | `scanner.c` | Analyse récursive d'un répertoire (sans suivre les points de réparation) |
 | `monitor.c` | Surveillance d'intégrité de fichiers (FIM) via `ReadDirectoryChangesW` asynchrone |
-| `edr.c` | Moteur de règles et scoring multi-indicateurs, SHA-256 (CNG/BCrypt), vérification Authenticode |
+| `edr.c` | Moteur de règles et scoring multi-indicateurs, SHA-256 (CNG/BCrypt) |
+| `sign.c` | Vérification Authenticode (signature intégrée et catalogue Windows), nom du signataire, cache |
 | `vt.c` | Réputation des hash via l'API VirusTotal v3 (cache, limite de débit) |
 | `logger.c` | Journal JSON Lines (champs de type ECS), rotation à 50 Mo, envoi UDP vers un SIEM |
 | `main.c` | Menu console, options de ligne de commande, arrêt propre par `Ctrl+C` |
@@ -33,24 +34,30 @@ Chaque indicateur ajoute des points ; le total (plafonné à 100) donne le nivea
 Règles processus :
 
 - `known_attack_tool` : outils offensifs connus (mimikatz, rubeus, lazagne, psexec, procdump…)
-- `lolbin` : binaires système détournables (powershell, mshta, rundll32, regsvr32, certutil…)
-- `office_spawned_shell` : LOLBin lancé par Word, Excel, Outlook, Acrobat…
+- `office_spawned_shell` : binaire système détournable (powershell, mshta, rundll32, certutil…) lancé par Word, Excel, Outlook, Acrobat… ; un LOLBin seul ne déclenche plus d'alerte
 - `user_writable_path` : exécution depuis Temp, Downloads, Public, Corbeille…
-- `system_name_masquerade` : nom de processus système (svchost, lsass…) hors du répertoire Windows
+- `system_name_masquerade` : nom de processus système (svchost, lsass…) hors du répertoire Windows ou non signé par Microsoft
 - `suspicious_cmdline` : PowerShell encodé, téléchargement, `-w hidden`, bypass, `certutil -urlcache`…
 - `destructive_or_credential_cmdline` : suppression des clichés instantanés, dump de LSASS…
-- `unsigned` : binaire suspect sans signature Authenticode valide
+- `invalid_signature` : signature falsifiée, révoquée ou explicitement non approuvée (+60)
+- `untrusted_signature` / `unsigned` : signature non approuvée ou absente sur un binaire déjà suspect
 
-Règles fichiers : `malicious_keyword`, `rtlo_spoofing`, `script`, `double_extension` (ex. `facture.pdf.exe`), `pe_user_writable_path`, `unsigned`.
+Règles fichiers : `malicious_keyword`, `rtlo_spoofing`, `script`, `double_extension` (ex. `facture.pdf.exe`), `pe_user_writable_path`, `system_name_masquerade`, `invalid_signature`, `untrusted_signature`, `unsigned`.
 
-Les opérations coûteuses (hash, signature) ne sont réalisées que sur les éléments déjà suspects, ce qui garde le scan rapide.
+### Signatures
+
+La signature de **chaque processus** et de **chaque fichier exécutable** (`.exe`, `.dll`, `.sys`, `.msi`…) est vérifiée : d'abord la signature intégrée, puis les catalogues Windows (SHA-256 puis SHA-1), ce qui couvre les binaires système comme `cmd.exe` ou `powershell.exe`. Les résultats sont mis en cache par chemin, date et taille.
+
+Champs JSON : `process.code_signature.status` (`signed`, `catalog_signed`, `unsigned`, `untrusted`, `invalid`), `.trusted`, `.subject_name` (signataire), `.error` (code WinVerifyTrust). Préfixe `file.` pour les fichiers.
+
+Le hash SHA-256 et VirusTotal ne sont utilisés que sur les éléments déjà suspects, ce qui garde le scan rapide.
 
 ## Intégration SIEM
 
 Chaque événement est une ligne JSON dans `edr.jsonl` :
 
 ```json
-{"@timestamp":"2026-11-16T09:18:05.419Z","event.sequence":335,"host.name":"PC01","agent.type":"MiniEDR","agent.version":"3.0.0","event.module":"scanner","event.action":"file_detected","event.kind":"alert","event.risk_score":95,"event.severity":4,"risk.level":"CRITICAL","rule.name":"double_extension,pe_user_writable_path,unsigned","file.path":"C:\\Users\\Public\\invoice.pdf.exe","file.name":"invoice.pdf.exe","file.size":2,"file.hash.sha256":"73cb...","file.code_signature.valid":false}
+{"@timestamp":"2026-11-16T09:18:05.419Z","event.sequence":335,"host.name":"PC01","agent.type":"MiniEDR","agent.version":"3.0.0","event.module":"scanner","event.action":"file_detected","event.kind":"alert","event.risk_score":95,"event.severity":4,"risk.level":"CRITICAL","rule.name":"double_extension,pe_user_writable_path,unsigned","file.path":"C:\\Users\\Public\\invoice.pdf.exe","file.name":"invoice.pdf.exe","file.size":2,"file.hash.sha256":"73cb...","file.code_signature.status":"unsigned","file.code_signature.trusted":false}
 ```
 
 `event.kind` vaut `alert` à partir du niveau MEDIUM. Actions émises : `agent_started`, `process_inventory`, `process_started`, `process_stopped`, `process_scan_completed`, `file_detected`, `scan_completed`, `file_created`, `file_modified`, `file_deleted`, `file_renamed_from`, `file_renamed_to`, `monitor_overflow`…
@@ -99,7 +106,7 @@ build.bat
 Équivalent à :
 
 ```bat
-gcc -O2 -std=c11 -Wall -Wextra -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c vt.c -o MiniEDR.exe -lbcrypt -lwintrust -lws2_32 -lwinhttp -lshell32
+gcc -O2 -std=c11 -Wall -Wextra -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c vt.c sign.c -o MiniEDR.exe -lbcrypt -lwintrust -lcrypt32 -lws2_32 -lwinhttp -lshell32
 ```
 
 Le projet Code::Blocks `MiniEDR.cbp` est configuré avec les mêmes options.
@@ -121,7 +128,8 @@ Le projet Code::Blocks `MiniEDR.cbp` est configuré avec les mêmes options.
 ## Limitations
 
 - Surveillance des processus par interrogation (250 ms) : les processus très courts peuvent être manqués. Une version pilotée par ETW ou un pilote noyau serait plus fiable.
-- La vérification de signature ne couvre que les signatures intégrées ; les binaires signés par catalogue hors du répertoire Windows apparaissent comme non signés.
+- La révocation des certificats n'est pas vérifiée en ligne (pour rester rapide et hors ligne).
+- Sans droits administrateur, les processus protégés ne peuvent pas être inspectés (signature `not_checked`).
 - Pas de blocage, de quarantaine, de télémétrie réseau ni d'analyse mémoire.
 - Règles codées en dur, sans moteur YARA/Sigma.
 

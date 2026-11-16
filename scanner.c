@@ -6,6 +6,7 @@
 #include "edr.h"
 #include "logger.h"
 #include "vt.h"
+#include "sign.h"
 
 typedef struct {
     unsigned long files;
@@ -13,7 +14,7 @@ typedef struct {
 } X01ScanStats;
 
 RiskLevel X01ReportFile(const char *module, const char *action, const WCHAR *path,
-                        X01Verdict *v, BOOL print) {
+                        const X01Sign *sig, X01Verdict *v, BOOL print) {
     WIN32_FILE_ATTRIBUTE_DATA attr;
     X01Json j;
     char sha[65];
@@ -33,9 +34,7 @@ RiskLevel X01ReportFile(const char *module, const char *action, const WCHAR *pat
             X01JsonStr(&j, "file.hash.sha256", sha);
             X01VtApply(sha, "file", v, &j, &vt);
         }
-        if (v->level > RISK_NONE && X01IsPe(path)) {
-            X01JsonBool(&j, "file.code_signature.valid", X01IsSigned(path));
-        }
+        X01SignJson(&j, "file", sig);
     }
 
     X01Emit(module, action, v, &j);
@@ -52,6 +51,7 @@ static void X01Walk(const WCHAR *dir, X01ScanStats *stats) {
     WIN32_FIND_DATAW data;
     WCHAR path[EDR_PATH];
     X01Verdict v;
+    X01Sign sig;
     HANDLE find;
 
     if (_snwprintf(path, X01N(path), L"%ls\\*", dir) < 0) return;
@@ -71,10 +71,10 @@ static void X01Walk(const WCHAR *dir, X01ScanStats *stats) {
             continue;
         }
 
-        X01ScoreFile(path, &v);
+        X01ScoreFile(path, &sig, &v);
         stats->files++;
         if (v.level > RISK_NONE) {
-            stats->alerts += X01ReportFile("scanner", "file_detected", path, &v, FALSE) >= RISK_MEDIUM;
+            stats->alerts += X01ReportFile("scanner", "file_detected", path, &sig, &v, FALSE) >= RISK_MEDIUM;
         }
     } while (!X01Stop && FindNextFileW(find, &data));
 
@@ -110,6 +110,7 @@ void X01ScanDirectory(const WCHAR *path) {
 
 void X01CheckFile(const WCHAR *path) {
     X01Verdict v;
+    X01Sign sig;
     X01VtResult r;
     X01Json j;
     char sha[65];
@@ -120,10 +121,11 @@ void X01CheckFile(const WCHAR *path) {
         return;
     }
 
-    X01ScoreFile(path, &v);
+    X01ScoreFile(path, &sig, &v);
     X01JsonInit(&j);
     X01JsonWStr(&j, "file.path", path);
     X01JsonStr(&j, "file.hash.sha256", sha);
+    X01SignJson(&j, "file", &sig);
     X01VtApply(sha, "file", &v, &j, &r);
     X01Emit("scanner", "virustotal_check", &v, &j);
 

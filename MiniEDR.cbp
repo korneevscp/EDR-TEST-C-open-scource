@@ -30,6 +30,7 @@
         <Linker>
             <Add library="bcrypt" />
             <Add library="wintrust" />
+            <Add library="crypt32" />
             <Add library="ws2_32" />
             <Add library="winhttp" />
             <Add library="shell32" />
@@ -47,6 +48,8 @@
         <Unit filename="monitor.h" />
         <Unit filename="vt.c" />
         <Unit filename="vt.h" />
+        <Unit filename="sign.c" />
+        <Unit filename="sign.h" />
         <Extensions>
             <code_completion />
             <debugger />

@@ -13,4 +13,4 @@ jobs:
     - uses: actions/checkout@v4
     - name: build
       shell: cmd
-      run: gcc -O2 -std=c11 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c vt.c -o MiniEDR.exe -lbcrypt -lwintrust -lws2_32 -lwinhttp -lshell32
+      run: gcc -O2 -std=c11 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c vt.c sign.c -o MiniEDR.exe -lbcrypt -lwintrust -lcrypt32 -lws2_32 -lwinhttp -lshell32

@@ -21,12 +21,13 @@ static const char *X01ActionName(DWORD action) {
 static void X01HandleChange(const WCHAR *root, const FILE_NOTIFY_INFORMATION *info) {
     WCHAR path[EDR_PATH];
     X01Verdict v;
+    X01Sign sig;
     int chars = (int)(info->FileNameLength / sizeof(WCHAR));
 
     if (_snwprintf(path, X01N(path), L"%ls\\%.*ls", root, chars, info->FileName) < 0) return;
 
-    X01ScoreFile(path, &v);
-    X01ReportFile("monitor", X01ActionName(info->Action), path, &v, TRUE);
+    X01ScoreFile(path, &sig, &v);
+    X01ReportFile("monitor", X01ActionName(info->Action), path, &sig, &v, TRUE);
 }
 
 void X01MonitorRun(const WCHAR *path) {
