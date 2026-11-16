@@ -7,6 +7,7 @@
 #include "process.h"
 #include "monitor.h"
 #include "scanner.h"
+#include "vt.h"
 
 static BOOL WINAPI X01CtrlHandler(DWORD type) {
     if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT) {
@@ -31,11 +32,11 @@ static BOOL X01ReadLine(char *buf, int size) {
     return TRUE;
 }
 
-static BOOL X01AskPath(WCHAR *path, int size) {
+static BOOL X01AskPath(const char *label, WCHAR *path, int size) {
     char line[EDR_PATH];
     int n;
 
-    printf("Directory: ");
+    printf("%s: ", label);
     if (!X01ReadLine(line, sizeof(line)) || !line[0]) return FALSE;
     n = MultiByteToWideChar(GetConsoleCP(), 0, line, -1, path, size);
     if (n > 1 && (path[n - 2] == L'\\' || path[n - 2] == L'/')) path[n - 2] = 0;
@@ -68,6 +69,8 @@ static void X01RealTime(const WCHAR *path) {
 int main(int argc, char **argv) {
     const char *log = "edr.jsonl";
     const char *siem = NULL;
+    const char *vtkey = getenv("VT_API_KEY");
+    int vtrate = 4;
     char line[32];
     WCHAR path[EDR_PATH];
     BOOL run = TRUE;
@@ -76,6 +79,8 @@ int main(int argc, char **argv) {
     for (i = 1; i + 1 < argc; i += 2) {
         if (!strcmp(argv[i], "--log")) log = argv[i + 1];
         else if (!strcmp(argv[i], "--siem")) siem = argv[i + 1];
+        else if (!strcmp(argv[i], "--vt-key")) vtkey = argv[i + 1];
+        else if (!strcmp(argv[i], "--vt-rate")) vtrate = atoi(argv[i + 1]);
     }
 
     SetConsoleTitleA("MiniEDR " EDR_VERSION);
@@ -87,6 +92,9 @@ int main(int argc, char **argv) {
     }
     if (!X01LogInit(log, siem)) {
         fprintf(stderr, "Unable to open log file: %s\n", log);
+    }
+    if (vtkey && !X01VtInit(vtkey, vtrate)) {
+        fprintf(stderr, "VirusTotal unavailable.\n");
     }
     X01Emit("agent", "agent_started", NULL, NULL);
 
@@ -104,18 +112,21 @@ int main(int argc, char **argv) {
                 X01ProcessScan();
                 break;
             case 2:
-                if (X01AskPath(path, X01N(path))) X01ScanDirectory(path);
+                if (X01AskPath("Directory", path, X01N(path))) X01ScanDirectory(path);
                 break;
             case 3:
-                if (X01AskPath(path, X01N(path))) X01MonitorRun(path);
+                if (X01AskPath("Directory", path, X01N(path))) X01MonitorRun(path);
                 break;
             case 4:
                 X01ProcessWatch();
                 break;
             case 5:
-                if (X01AskPath(path, X01N(path))) X01RealTime(path);
+                if (X01AskPath("Directory", path, X01N(path))) X01RealTime(path);
                 break;
             case 6:
+                if (X01AskPath("File", path, X01N(path))) X01CheckFile(path);
+                break;
+            case 7:
                 run = FALSE;
                 break;
             default:
@@ -124,6 +135,7 @@ int main(int argc, char **argv) {
     }
 
     X01Emit("agent", "agent_stopped", NULL, NULL);
+    X01VtClose();
     X01LogClose();
     X01EdrClose();
     return 0;

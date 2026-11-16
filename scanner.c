@@ -4,14 +4,15 @@
 #include "scanner.h"
 #include "edr.h"
 #include "logger.h"
+#include "vt.h"
 
 typedef struct {
     unsigned long files;
     unsigned long alerts;
 } X01ScanStats;
 
-void X01ReportFile(const char *module, const char *action, const WCHAR *path,
-                   const X01Verdict *v, BOOL print) {
+RiskLevel X01ReportFile(const char *module, const char *action, const WCHAR *path,
+                        X01Verdict *v, BOOL print) {
     WIN32_FILE_ATTRIBUTE_DATA attr;
     X01Json j;
     char sha[65];
@@ -28,6 +29,7 @@ void X01ReportFile(const char *module, const char *action, const WCHAR *path,
         X01JsonNum(&j, "file.size", ((long long)attr.nFileSizeHigh << 32) | attr.nFileSizeLow);
         if (v->level > RISK_NONE && X01Sha256(path, sha)) {
             X01JsonStr(&j, "file.hash.sha256", sha);
+            X01VtApply(sha, "file", v, &j);
         }
         if (v->level > RISK_NONE && X01IsPe(path)) {
             X01JsonBool(&j, "file.code_signature.valid", X01IsSigned(path));
@@ -40,6 +42,8 @@ void X01ReportFile(const char *module, const char *action, const WCHAR *path,
         X01Utf8(path, utf8, sizeof(utf8));
         printf("[%-8s %3d] %-12s %s %s\n", X01RiskName(v->level), v->score, action, utf8, v->reasons);
     }
+
+    return v->level;
 }
 
 static void X01Walk(const WCHAR *dir, X01ScanStats *stats) {
@@ -68,8 +72,7 @@ static void X01Walk(const WCHAR *dir, X01ScanStats *stats) {
         X01ScoreFile(path, &v);
         stats->files++;
         if (v.level > RISK_NONE) {
-            X01ReportFile("scanner", "file_detected", path, &v, FALSE);
-            stats->alerts += v.level >= RISK_MEDIUM;
+            stats->alerts += X01ReportFile("scanner", "file_detected", path, &v, FALSE) >= RISK_MEDIUM;
         }
     } while (!X01Stop && FindNextFileW(find, &data));
 
@@ -101,4 +104,40 @@ void X01ScanDirectory(const WCHAR *path) {
     X01Emit("scanner", "scan_completed", NULL, &j);
 
     printf("\nFiles analyzed: %lu  Alerts: %lu\n", stats.files, stats.alerts);
+}
+
+void X01CheckFile(const WCHAR *path) {
+    X01Verdict v;
+    X01VtResult r;
+    X01Json j;
+    char sha[65];
+
+    if (!X01VtEnabled()) {
+        printf("Set VT_API_KEY or use --vt-key to enable VirusTotal.\n");
+        return;
+    }
+    if (!X01Sha256(path, sha)) {
+        printf("Unable to hash file.\n");
+        return;
+    }
+
+    X01ScoreFile(path, &v);
+    X01VtLookup(sha, &r);
+
+    printf("\nSHA-256: %s\n", sha);
+    if (r.status == X01VT_FOUND) {
+        printf("VirusTotal: %d malicious, %d suspicious, %d harmless, %d undetected\n",
+               r.malicious, r.suspicious, r.harmless, r.undetected);
+        printf("https://www.virustotal.com/gui/file/%s\n", sha);
+    } else {
+        printf("VirusTotal: %s\n", r.status == X01VT_UNKNOWN ? "file not known" :
+               r.status == X01VT_RATE_LIMITED ? "rate limited, retry later" : "request failed");
+    }
+
+    X01JsonInit(&j);
+    X01JsonWStr(&j, "file.path", path);
+    X01JsonStr(&j, "file.hash.sha256", sha);
+    X01VtApply(sha, "file", &v, &j);
+    X01Emit("scanner", "virustotal_check", &v, &j);
+    printf("Risk: %s (%d) %s\n", X01RiskName(v.level), v.score, v.reasons);
 }

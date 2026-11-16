@@ -31,6 +31,7 @@
             <Add library="bcrypt" />
             <Add library="wintrust" />
             <Add library="ws2_32" />
+            <Add library="winhttp" />
         </Linker>
         <Unit filename="main.c" />
         <Unit filename="edr.c" />
@@ -43,6 +44,8 @@
         <Unit filename="scanner.h" />
         <Unit filename="monitor.c" />
         <Unit filename="monitor.h" />
+        <Unit filename="vt.c" />
+        <Unit filename="vt.h" />
         <Extensions>
             <code_completion />
             <debugger />

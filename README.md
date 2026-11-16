@@ -12,6 +12,7 @@ MiniEDR est un prototype d'Endpoint Detection and Response (EDR) écrit en C pou
 | `scanner.c` | Analyse récursive d'un répertoire (sans suivre les points de réparation) |
 | `monitor.c` | Surveillance d'intégrité de fichiers (FIM) via `ReadDirectoryChangesW` asynchrone |
 | `edr.c` | Moteur de règles et scoring multi-indicateurs, SHA-256 (CNG/BCrypt), vérification Authenticode |
+| `vt.c` | Réputation des hash via l'API VirusTotal v3 (cache, limite de débit) |
 | `logger.c` | Journal JSON Lines (champs de type ECS), rotation à 50 Mo, envoi UDP vers un SIEM |
 | `main.c` | Menu console, options de ligne de commande, arrêt propre par `Ctrl+C` |
 
@@ -62,6 +63,22 @@ MiniEDR.exe --siem 192.168.1.10:5514 --log C:\EDR\edr.jsonl
 
 Le fichier peut aussi être lu par un agent (Filebeat, Splunk UF, Wazuh agent).
 
+## VirusTotal
+
+Le module `vt.c` interroge l'API VirusTotal v3 (`/api/v3/files/{sha256}`) via WinHTTP. Seul le **hash** est envoyé, jamais le fichier.
+
+```bat
+set VT_API_KEY=votre_cle
+MiniEDR.exe
+```
+
+ou `MiniEDR.exe --vt-key votre_cle --vt-rate 4`.
+
+- Les fichiers et processus déjà suspects sont automatiquement vérifiés ; l'option **6** du menu vérifie n'importe quel fichier.
+- Règles : `virustotal_malicious` (+80 si au moins 5 moteurs le détectent), `virustotal_detected` (+40 si au moins 1 moteur le détecte comme malveillant ou 3 comme suspect).
+- Champs JSON : `file.virustotal.status`, `.malicious`, `.suspicious`, `.harmless`, `.undetected`, `.link` (préfixe `process.` pour les processus).
+- Cache de 4096 résultats et limite de requêtes par minute (`--vt-rate`, 4 par défaut pour une clé gratuite) : au-delà, le statut vaut `rate_limited` au lieu de bloquer l'analyse.
+
 ## Compilation
 
 Prérequis : Windows 10+, GCC MinGW-w64 (ex. celui fourni avec Code::Blocks).
@@ -73,7 +90,7 @@ build.bat
 Équivalent à :
 
 ```bat
-gcc -O2 -std=c11 -Wall -Wextra -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c -o MiniEDR.exe -lbcrypt -lwintrust -lws2_32
+gcc -O2 -std=c11 -Wall -Wextra -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c vt.c -o MiniEDR.exe -lbcrypt -lwintrust -lws2_32 -lwinhttp
 ```
 
 Le projet Code::Blocks `MiniEDR.cbp` est configuré avec les mêmes options.
@@ -86,7 +103,8 @@ Le projet Code::Blocks `MiniEDR.cbp` est configuré avec les mêmes options.
 3. Directory monitoring
 4. Process monitoring
 5. Real-time protection (processes + directory)
-6. Exit
+6. VirusTotal file check
+7. Exit
 ```
 
 `Ctrl+C` arrête le mode en cours et revient au menu. Lancer en administrateur permet de lire le chemin et la ligne de commande des processus protégés.

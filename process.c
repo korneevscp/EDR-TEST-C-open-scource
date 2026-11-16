@@ -7,6 +7,7 @@
 #include "process.h"
 #include "edr.h"
 #include "logger.h"
+#include "vt.h"
 
 typedef struct {
     DWORD pid;
@@ -130,6 +131,7 @@ static BOOL X01Analyze(const X01Proc *p, const X01ProcList *all, const char *act
         }
         if (X01Sha256(image, sha)) {
             X01JsonStr(&j, "process.hash.sha256", sha);
+            X01VtApply(sha, "process", &v, &j);
         }
         X01JsonBool(&j, "process.code_signature.trusted", sign);
     }
