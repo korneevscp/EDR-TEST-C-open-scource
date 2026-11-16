@@ -2,7 +2,7 @@
 <CodeBlocks_project_file>
     <FileVersion major="1" minor="6" />
     <Project>
-        <Option title="MiniEDR V2" />
+        <Option title="MiniEDR V3" />
         <Option pch_mode="2" />
         <Option compiler="gcc" />
         <Build>
@@ -24,9 +24,13 @@
             <Add option="-Wall" />
             <Add option="-Wextra" />
             <Add option="-std=c11" />
+            <Add option="-O2" />
+            <Add option="-D_WIN32_WINNT=0x0A00" />
         </Compiler>
         <Linker>
-            <Add library="kernel32" />
+            <Add library="bcrypt" />
+            <Add library="wintrust" />
+            <Add library="ws2_32" />
         </Linker>
         <Unit filename="main.c" />
         <Unit filename="edr.c" />

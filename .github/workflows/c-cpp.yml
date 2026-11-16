@@ -8,16 +8,9 @@ on:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
-
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-    - name: configure
-      run: ./configure
-    - name: make
-      run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck
+    - name: build
+      shell: cmd
+      run: gcc -O2 -std=c11 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c -o MiniEDR.exe -lbcrypt -lwintrust -lws2_32
