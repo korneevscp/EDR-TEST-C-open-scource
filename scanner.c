@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <shellapi.h>
 #include <stdio.h>
 #include <wchar.h>
 #include "scanner.h"
@@ -17,6 +18,7 @@ RiskLevel X01ReportFile(const char *module, const char *action, const WCHAR *pat
     X01Json j;
     char sha[65];
     char utf8[EDR_PATH * 3];
+    X01VtResult vt;
     BOOL exists;
 
     exists = GetFileAttributesExW(path, GetFileExInfoStandard, &attr) &&
@@ -29,7 +31,7 @@ RiskLevel X01ReportFile(const char *module, const char *action, const WCHAR *pat
         X01JsonNum(&j, "file.size", ((long long)attr.nFileSizeHigh << 32) | attr.nFileSizeLow);
         if (v->level > RISK_NONE && X01Sha256(path, sha)) {
             X01JsonStr(&j, "file.hash.sha256", sha);
-            X01VtApply(sha, "file", v, &j);
+            X01VtApply(sha, "file", v, &j, &vt);
         }
         if (v->level > RISK_NONE && X01IsPe(path)) {
             X01JsonBool(&j, "file.code_signature.valid", X01IsSigned(path));
@@ -111,33 +113,33 @@ void X01CheckFile(const WCHAR *path) {
     X01VtResult r;
     X01Json j;
     char sha[65];
+    WCHAR link[128];
 
-    if (!X01VtEnabled()) {
-        printf("Set VT_API_KEY or use --vt-key to enable VirusTotal.\n");
-        return;
-    }
     if (!X01Sha256(path, sha)) {
         printf("Unable to hash file.\n");
         return;
     }
 
     X01ScoreFile(path, &v);
-    X01VtLookup(sha, &r);
+    X01JsonInit(&j);
+    X01JsonWStr(&j, "file.path", path);
+    X01JsonStr(&j, "file.hash.sha256", sha);
+    X01VtApply(sha, "file", &v, &j, &r);
+    X01Emit("scanner", "virustotal_check", &v, &j);
 
-    printf("\nSHA-256: %s\n", sha);
+    printf("\nSHA-256: %s\nhttps://www.virustotal.com/gui/file/%s\n", sha, sha);
+
     if (r.status == X01VT_FOUND) {
         printf("VirusTotal: %d malicious, %d suspicious, %d harmless, %d undetected\n",
                r.malicious, r.suspicious, r.harmless, r.undetected);
-        printf("https://www.virustotal.com/gui/file/%s\n", sha);
+    } else if (r.status == X01VT_DISABLED) {
+        _snwprintf(link, X01N(link), L"https://www.virustotal.com/gui/file/%hs", sha);
+        ShellExecuteW(NULL, L"open", link, NULL, NULL, SW_SHOWNORMAL);
+        printf("No API key: VirusTotal report opened in the browser.\n");
     } else {
         printf("VirusTotal: %s\n", r.status == X01VT_UNKNOWN ? "file not known" :
                r.status == X01VT_RATE_LIMITED ? "rate limited, retry later" : "request failed");
     }
 
-    X01JsonInit(&j);
-    X01JsonWStr(&j, "file.path", path);
-    X01JsonStr(&j, "file.hash.sha256", sha);
-    X01VtApply(sha, "file", &v, &j);
-    X01Emit("scanner", "virustotal_check", &v, &j);
     printf("Risk: %s (%d) %s\n", X01RiskName(v.level), v.score, v.reasons);
 }

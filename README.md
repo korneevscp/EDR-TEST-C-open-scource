@@ -67,6 +67,15 @@ Le fichier peut aussi être lu par un agent (Filebeat, Splunk UF, Wazuh agent).
 
 Le module `vt.c` interroge l'API VirusTotal v3 (`/api/v3/files/{sha256}`) via WinHTTP. Seul le **hash** est envoyé, jamais le fichier.
 
+La clé API est **facultative** :
+
+| Mode | Comportement |
+|---|---|
+| Sans clé | Le lien `https://www.virustotal.com/gui/file/{sha256}` est ajouté aux événements JSON (`status` = `disabled`) ; l'option **6** ouvre le rapport dans le navigateur |
+| Avec clé | Les résultats sont récupérés automatiquement et intégrés au score de risque |
+
+Pour activer le mode avec clé :
+
 ```bat
 set VT_API_KEY=votre_cle
 MiniEDR.exe
@@ -90,7 +99,7 @@ build.bat
 Équivalent à :
 
 ```bat
-gcc -O2 -std=c11 -Wall -Wextra -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c vt.c -o MiniEDR.exe -lbcrypt -lwintrust -lws2_32 -lwinhttp
+gcc -O2 -std=c11 -Wall -Wextra -D_WIN32_WINNT=0x0A00 main.c edr.c logger.c process.c scanner.c monitor.c vt.c -o MiniEDR.exe -lbcrypt -lwintrust -lws2_32 -lwinhttp -lshell32
 ```
 
 Le projet Code::Blocks `MiniEDR.cbp` est configuré avec les mêmes options.

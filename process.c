@@ -125,13 +125,14 @@ static BOOL X01Analyze(const X01Proc *p, const X01ProcList *all, const char *act
 
     if (v.score > 0 && image[0]) {
         BOOL sign = X01InWinDir(image) || X01IsSigned(image);
+        X01VtResult vt;
         if (!sign) {
             X01VerdictAdd(&v, 10, "unsigned");
             X01VerdictFinish(&v);
         }
         if (X01Sha256(image, sha)) {
             X01JsonStr(&j, "process.hash.sha256", sha);
-            X01VtApply(sha, "process", &v, &j);
+            X01VtApply(sha, "process", &v, &j, &vt);
         }
         X01JsonBool(&j, "process.code_signature.trusted", sign);
     }

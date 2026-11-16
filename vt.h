@@ -25,6 +25,6 @@ BOOL X01VtInit(const char *key, int per_minute);
 void X01VtClose(void);
 BOOL X01VtEnabled(void);
 void X01VtLookup(const char *sha256, X01VtResult *r);
-void X01VtApply(const char *sha256, const char *prefix, X01Verdict *v, X01Json *j);
+void X01VtApply(const char *sha256, const char *prefix, X01Verdict *v, X01Json *j, X01VtResult *r);
 
 #endif

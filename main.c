@@ -52,7 +52,8 @@ static void X01Menu(void) {
     printf("3. Directory monitoring\n");
     printf("4. Process monitoring\n");
     printf("5. Real-time protection (processes + directory)\n");
-    printf("6. Exit\n");
+    printf("6. VirusTotal file check%s\n", X01VtEnabled() ? "" : " (browser, no API key)");
+    printf("7. Exit\n");
     printf("> ");
 }
 

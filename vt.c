@@ -171,34 +171,32 @@ void X01VtLookup(const char *sha256, X01VtResult *r) {
     LeaveCriticalSection(&X01VtLock);
 }
 
-void X01VtApply(const char *sha256, const char *prefix, X01Verdict *v, X01Json *j) {
-    X01VtResult r;
+void X01VtApply(const char *sha256, const char *prefix, X01Verdict *v, X01Json *j, X01VtResult *r) {
     char key[64];
     char link[128];
 
-    if (!X01VtEnabled()) return;
-    X01VtLookup(sha256, &r);
+    X01VtLookup(sha256, r);
 
     snprintf(key, sizeof(key), "%s.virustotal.status", prefix);
-    X01JsonStr(j, key, X01StatusName(r.status));
-
-    if (r.status != X01VT_FOUND) return;
-
-    snprintf(key, sizeof(key), "%s.virustotal.malicious", prefix);
-    X01JsonNum(j, key, r.malicious);
-    snprintf(key, sizeof(key), "%s.virustotal.suspicious", prefix);
-    X01JsonNum(j, key, r.suspicious);
-    snprintf(key, sizeof(key), "%s.virustotal.harmless", prefix);
-    X01JsonNum(j, key, r.harmless);
-    snprintf(key, sizeof(key), "%s.virustotal.undetected", prefix);
-    X01JsonNum(j, key, r.undetected);
+    X01JsonStr(j, key, X01StatusName(r->status));
     snprintf(key, sizeof(key), "%s.virustotal.link", prefix);
     snprintf(link, sizeof(link), "https://www.virustotal.com/gui/file/%s", sha256);
     X01JsonStr(j, key, link);
 
-    if (r.malicious >= 5) {
+    if (r->status != X01VT_FOUND) return;
+
+    snprintf(key, sizeof(key), "%s.virustotal.malicious", prefix);
+    X01JsonNum(j, key, r->malicious);
+    snprintf(key, sizeof(key), "%s.virustotal.suspicious", prefix);
+    X01JsonNum(j, key, r->suspicious);
+    snprintf(key, sizeof(key), "%s.virustotal.harmless", prefix);
+    X01JsonNum(j, key, r->harmless);
+    snprintf(key, sizeof(key), "%s.virustotal.undetected", prefix);
+    X01JsonNum(j, key, r->undetected);
+
+    if (r->malicious >= 5) {
         X01VerdictAdd(v, 80, "virustotal_malicious");
-    } else if (r.malicious > 0 || r.suspicious >= 3) {
+    } else if (r->malicious > 0 || r->suspicious >= 3) {
         X01VerdictAdd(v, 40, "virustotal_detected");
     }
     X01VerdictFinish(v);
